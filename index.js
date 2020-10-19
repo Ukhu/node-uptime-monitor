@@ -24,11 +24,43 @@ const server = http.createServer((req, res) => {
   req.on('end', () => {
     buffer += decoder.end();
 
-    res.end('Hello World\n');
+    const selectedCallback = handlers[trimmedPath] || handlers.notFound
 
-    console.log('Request recieved with this payload: \n', buffer);
+    const data = {
+      'path': trimmedPath,
+      'method': method,
+      'query': requestQuery,
+      headers,
+      'payload': buffer
+    }
+
+    selectedCallback(data, function(statusCode = 200, payload = {}) {
+      const responseData = JSON.stringify(payload);
+
+      res.setHeader('Content-Type', 'application/json')
+      res.writeHead(statusCode);
+      res.end(responseData);
+
+      console.log('Response sent successfully');
+    })
   })
 });
+
+const handlers = {};
+
+handlers.sample = function(data, callback) {
+  callback(201, {
+    name: 'sample handler'
+  });
+}
+
+handlers.notFound = function(data, callback) {
+  callback(404);
+}
+
+const router = {
+  sample: handlers.sample
+}
 
 server.listen(PORT, () => {
   console.log(`Server started on port: ${PORT}`);
