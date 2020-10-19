@@ -1,8 +1,31 @@
 const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const { StringDecoder } = require('string_decoder');
 const config = require('./config');
 
-const server = http.createServer((req, res) => {
+// Instantiate HTTP Server
+const httpServer = http.createServer(unifiedServer);
+
+// Start HTTP Server
+httpServer.listen(config.httpPort, () => {
+  console.log(`HTTP server started on port: ${config.httpPort} in ${config.envName}`);
+});
+
+// Instantiate HTTPS Server
+const httpsServerOptions = {
+  'key': fs.readFileSync('./https/key.pem'),
+  'cert': fs.readFileSync('./https/cert.pem')
+}
+const httpsServer = https.createServer(httpsServerOptions, unifiedServer)
+
+// Start HTTPS Server
+httpsServer.listen(config.httpsPort, () => {
+  console.log(`HTTPS server started on port: ${config.httpsPort} in ${config.envName}`);
+});
+
+// Handle all requests on both HTTP and HTTPS servers 
+function unifiedServer(req, res) {
   const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
 
   const path = parsedUrl.pathname;
@@ -13,18 +36,23 @@ const server = http.createServer((req, res) => {
 
   const headers  = req.headers;
 
+  // decoder for decoding buffers
   const decoder = new StringDecoder('utf8');
   let buffer = '';
 
+  // called only for requests with body to handle incomming chunks from the stream
   req.on('data', (chunk) => {
-    buffer += decoder.write(chunk);
+    buffer += decoder.write(chunk); // decode each chunk and append to the earlier received chunks
   });
 
+  // called for all requests regardless if they contain a body
   req.on('end', () => {
     buffer += decoder.end();
 
+    // check if request path is among the available routes
     const selectedCallback = handlers[trimmedPath] || handlers.notFound
 
+    // construct data to be sent to all handlers
     const data = {
       'path': trimmedPath,
       'method': method,
@@ -39,28 +67,24 @@ const server = http.createServer((req, res) => {
       res.setHeader('Content-Type', 'application/json')
       res.writeHead(statusCode);
       res.end(responseData);
-
-      console.log('Response sent successfully');
     })
   })
-});
+}
 
 const handlers = {};
 
-handlers.sample = function(data, callback) {
-  callback(201, {
-    name: 'sample handler'
+handlers.ping = function(data, callback) {
+  callback(200);
+}
+
+// handle all not found routes
+handlers.notFound = function(data, callback) {
+  callback(404, {
+    'message': 'not found'
   });
 }
 
-handlers.notFound = function(data, callback) {
-  callback(404);
-}
-
+// router object with available routes
 const router = {
   sample: handlers.sample
 }
-
-server.listen(config.port, () => {
-  console.log(`Server started on port: ${config.port} in ${config.envName}`);
-});
